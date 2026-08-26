@@ -39,9 +39,10 @@ jobs:
       - name: Add Assets and Dependencies
         run: |
           cd myapp
-          flutter pub add webview_flutter
-          flutter pub add flutter_launcher_icons
-          flutter pub add connectivity_plus
+          # Pin versions so repeated builds use the same WebView stack.
+          flutter pub add webview_flutter:4.13.0
+          flutter pub add flutter_launcher_icons:0.14.4
+          flutter pub add connectivity_plus:6.1.4
 
           # Menambahkan konfigurasi assets ke baris paling bawah untuk menghindari error indentasi YAML
           echo "  assets:" >> pubspec.yaml
@@ -53,29 +54,45 @@ jobs:
           WEB_URL="${{ github.event.inputs.web_url }}"
 
           cat > myapp/lib/main.dart << 'DART'
+          import 'dart:async';
+
+          import 'package:connectivity_plus/connectivity_plus.dart';
           import 'package:flutter/material.dart';
           import 'package:flutter/services.dart';
           import 'package:webview_flutter/webview_flutter.dart';
-          import 'package:connectivity_plus/connectivity_plus.dart';
-          import 'dart:async';
 
           void main() {
             WidgetsFlutterBinding.ensureInitialized();
-            SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-              statusBarColor: Colors.transparent,
-              statusBarIconBrightness: Brightness.dark,
-            ));
+
+            SystemChrome.setEnabledSystemUIMode(
+              SystemUiMode.edgeToEdge,
+            );
+
+            SystemChrome.setSystemUIOverlayStyle(
+              const SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                systemNavigationBarColor: Colors.transparent,
+                statusBarIconBrightness: Brightness.dark,
+                systemNavigationBarIconBrightness: Brightness.dark,
+                systemNavigationBarDividerColor: Colors.transparent,
+              ),
+            );
+
             runApp(const MyApp());
           }
 
           class MyApp extends StatelessWidget {
             const MyApp({super.key});
+
             @override
             Widget build(BuildContext context) {
               return MaterialApp(
                 title: r'$APP_NAME',
                 debugShowCheckedModeBanner: false,
-                theme: ThemeData(useMaterial3: true, primarySwatch: Colors.blue),
+                theme: ThemeData(
+                  useMaterial3: true,
+                  colorSchemeSeed: Colors.blue,
+                ),
                 home: const SplashScreen(),
               );
             }
@@ -83,23 +100,25 @@ jobs:
 
           class SplashScreen extends StatefulWidget {
             const SplashScreen({super.key});
+
             @override
             State<SplashScreen> createState() => _SplashScreenState();
           }
 
           class _SplashScreenState extends State<SplashScreen>
               with TickerProviderStateMixin {
-            late AnimationController _fadeController;
-            late AnimationController _scaleController;
-            late AnimationController _dotController;
-            late Animation<double> _fadeAnim;
-            late Animation<double> _scaleAnim;
-            late Animation<double> _dot1Anim;
-            late Animation<double> _dot2Anim;
-            late Animation<double> _dot3Anim;
-            
+            late final AnimationController _fadeController;
+            late final AnimationController _scaleController;
+            late final AnimationController _dotController;
+            late final Animation<double> _fadeAnim;
+            late final Animation<double> _scaleAnim;
+            late final Animation<double> _dot1Anim;
+            late final Animation<double> _dot2Anim;
+            late final Animation<double> _dot3Anim;
+
             bool _isChecking = false;
             bool _dialogShown = false;
+            Timer? _startupTimer;
 
             @override
             void initState() {
@@ -107,89 +126,166 @@ jobs:
 
               _fadeController = AnimationController(
                 vsync: this,
-                duration: const Duration(milliseconds: 800),
+                duration: const Duration(milliseconds: 450),
               );
+
               _scaleController = AnimationController(
                 vsync: this,
-                duration: const Duration(milliseconds: 800),
+                duration: const Duration(milliseconds: 450),
               );
+
               _dotController = AnimationController(
                 vsync: this,
-                duration: const Duration(milliseconds: 1200),
+                duration: const Duration(milliseconds: 900),
               )..repeat();
 
-              _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-                CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
-              );
-              _scaleAnim = Tween<double>(begin: 0.75, end: 1.0).animate(
-                CurvedAnimation(parent: _scaleController, curve: Curves.easeOutBack),
+              _fadeAnim = CurvedAnimation(
+                parent: _fadeController,
+                curve: Curves.easeOut,
               );
 
-              _dot1Anim = TweenSequence([
-                TweenSequenceItem(tween: Tween<double>(begin: 0.3, end: 1.0), weight: 1),
-                TweenSequenceItem(tween: Tween<double>(begin: 1.0, end: 0.3), weight: 1),
-                TweenSequenceItem(tween: ConstantTween<double>(0.3), weight: 1),
-              ]).animate(CurvedAnimation(parent: _dotController, curve: Curves.easeInOut));
+              _scaleAnim = Tween<double>(
+                begin: 0.90,
+                end: 1.0,
+              ).animate(
+                CurvedAnimation(
+                  parent: _scaleController,
+                  curve: Curves.easeOutCubic,
+                ),
+              );
 
-              _dot2Anim = TweenSequence([
-                TweenSequenceItem(tween: ConstantTween<double>(0.3), weight: 1),
-                TweenSequenceItem(tween: Tween<double>(begin: 0.3, end: 1.0), weight: 1),
-                TweenSequenceItem(tween: Tween<double>(begin: 1.0, end: 0.3), weight: 1),
-              ]).animate(CurvedAnimation(parent: _dotController, curve: Curves.easeInOut));
+              _dot1Anim = TweenSequence<double>([
+                TweenSequenceItem(
+                  tween: Tween(begin: 0.35, end: 1.0),
+                  weight: 1,
+                ),
+                TweenSequenceItem(
+                  tween: Tween(begin: 1.0, end: 0.35),
+                  weight: 1,
+                ),
+                TweenSequenceItem(
+                  tween: ConstantTween(0.35),
+                  weight: 1,
+                ),
+              ]).animate(
+                CurvedAnimation(
+                  parent: _dotController,
+                  curve: Curves.easeInOut,
+                ),
+              );
 
-              _dot3Anim = TweenSequence([
-                TweenSequenceItem(tween: Tween<double>(begin: 1.0, end: 0.3), weight: 1),
-                TweenSequenceItem(tween: ConstantTween<double>(0.3), weight: 1),
-                TweenSequenceItem(tween: Tween<double>(begin: 0.3, end: 1.0), weight: 1),
-              ]).animate(CurvedAnimation(parent: _dotController, curve: Curves.easeInOut));
+              _dot2Anim = TweenSequence<double>([
+                TweenSequenceItem(
+                  tween: ConstantTween(0.35),
+                  weight: 1,
+                ),
+                TweenSequenceItem(
+                  tween: Tween(begin: 0.35, end: 1.0),
+                  weight: 1,
+                ),
+                TweenSequenceItem(
+                  tween: Tween(begin: 1.0, end: 0.35),
+                  weight: 1,
+                ),
+              ]).animate(
+                CurvedAnimation(
+                  parent: _dotController,
+                  curve: Curves.easeInOut,
+                ),
+              );
+
+              _dot3Anim = TweenSequence<double>([
+                TweenSequenceItem(
+                  tween: Tween(begin: 1.0, end: 0.35),
+                  weight: 1,
+                ),
+                TweenSequenceItem(
+                  tween: ConstantTween(0.35),
+                  weight: 1,
+                ),
+                TweenSequenceItem(
+                  tween: Tween(begin: 0.35, end: 1.0),
+                  weight: 1,
+                ),
+              ]).animate(
+                CurvedAnimation(
+                  parent: _dotController,
+                  curve: Curves.easeInOut,
+                ),
+              );
 
               _fadeController.forward();
               _scaleController.forward();
 
-              Timer(const Duration(milliseconds: 1500), () {
-                _checkConnectionAndNavigate();
-              });
+              // Keep the splash short without adding unnecessary delays.
+              _startupTimer = Timer(
+                const Duration(milliseconds: 850),
+                _checkConnectionAndNavigate,
+              );
             }
 
             Future<void> _checkConnectionAndNavigate() async {
-              if (_isChecking) return;
+              if (_isChecking || !mounted) return;
+
               setState(() {
                 _isChecking = true;
               });
 
-              await Future.delayed(const Duration(milliseconds: 1000));
+              try {
+                final results = await Connectivity().checkConnectivity();
 
-              var connectivityResult = await (Connectivity().checkConnectivity());
-              if (connectivityResult.every((r) => r == ConnectivityResult.none)) {
+                final hasNetwork = results.any(
+                  (result) => result != ConnectivityResult.none,
+                );
+
+                if (!hasNetwork) {
+                  if (!mounted) return;
+                  setState(() {
+                    _isChecking = false;
+                  });
+                  _showNoConnectionDialog();
+                  return;
+                }
+
+                if (!mounted) return;
+
+                Navigator.of(context).pushReplacement(
+                  PageRouteBuilder(
+                    transitionDuration: const Duration(milliseconds: 180),
+                    reverseTransitionDuration:
+                        const Duration(milliseconds: 120),
+                    pageBuilder: (_, __, ___) => const WebViewPage(),
+                    transitionsBuilder: (_, animation, __, child) {
+                      return FadeTransition(
+                        opacity: animation,
+                        child: child,
+                      );
+                    },
+                  ),
+                );
+              } catch (_) {
+                if (!mounted) return;
                 setState(() {
                   _isChecking = false;
                 });
                 _showNoConnectionDialog();
-              } else {
-                if (mounted) {
-                  Navigator.pushReplacement(
-                    context,
-                    PageRouteBuilder(
-                      transitionDuration: const Duration(milliseconds: 500),
-                      pageBuilder: (_, __, ___) => const WebViewPage(),
-                      transitionsBuilder: (_, anim, __, child) =>
-                          FadeTransition(opacity: anim, child: child),
-                    ),
-                  );
-                }
               }
             }
 
             void _showNoConnectionDialog() {
               if (!mounted || _dialogShown) return;
+
               setState(() {
                 _dialogShown = true;
               });
-              showDialog(
+
+              showDialog<void>(
                 context: context,
                 barrierDismissible: false,
-                builder: (context) => AlertDialog(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                builder: (dialogContext) => AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   title: const Row(
                     children: [
                       Icon(Icons.wifi_off, color: Colors.red),
@@ -203,10 +299,13 @@ jobs:
                   actions: [
                     TextButton(
                       onPressed: () {
-                        Navigator.pop(context);
+                        Navigator.of(dialogContext).pop();
+                        if (!mounted) return;
+
                         setState(() {
                           _dialogShown = false;
                         });
+
                         _checkConnectionAndNavigate();
                       },
                       child: const Text('Coba Lagi'),
@@ -216,97 +315,120 @@ jobs:
               );
             }
 
+            Widget _buildDot(
+              Animation<double> animation,
+              Color color,
+            ) {
+              return AnimatedBuilder(
+                animation: animation,
+                builder: (_, __) {
+                  return Opacity(
+                    opacity: animation.value,
+                    child: Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  );
+                },
+              );
+            }
+
             @override
             void dispose() {
+              _startupTimer?.cancel();
               _fadeController.dispose();
               _scaleController.dispose();
               _dotController.dispose();
               super.dispose();
             }
 
-            Widget _buildDot(Animation<double> anim, Color color) {
-              return AnimatedBuilder(
-                animation: anim,
-                builder: (_, __) => Opacity(
-                  opacity: anim.value,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                  ),
-                ),
-              );
-            }
-
             @override
             Widget build(BuildContext context) {
-              final size = MediaQuery.of(context).size;
               return Scaffold(
-                body: Container(
-                  width: size.width,
-                  height: size.height,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFFf0f4ff), Color(0xFFe8f5e9)],
+                body: SizedBox.expand(
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFFF0F4FF),
+                          Color(0xFFE8F5E9),
+                        ],
+                      ),
                     ),
-                  ),
-                  child: FadeTransition(
-                    opacity: _fadeAnim,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Spacer(flex: 3),
-                        ScaleTransition(
-                          scale: _scaleAnim,
-                          child: Container(
-                            width: 140,
-                            height: 140,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(32),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.15),
-                                  blurRadius: 30,
-                                  offset: const Offset(0, 10),
+                    child: FadeTransition(
+                      opacity: _fadeAnim,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ScaleTransition(
+                            scale: _scaleAnim,
+                            child: Container(
+                              width: 140,
+                              height: 140,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(32),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.15),
+                                    blurRadius: 30,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(32),
+                                child: Image.asset(
+                                  'assets/icon/icon.png',
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) {
+                                    return const Icon(
+                                      Icons.android,
+                                      size: 80,
+                                      color: Colors.green,
+                                    );
+                                  },
                                 ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(32),
-                              child: Image.asset(
-                                'assets/icon/icon.png',
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) =>
-                                    const Icon(Icons.android, size: 80, color: Colors.green),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 28),
-                        Text(
-                          r'$APP_NAME',
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1a1a2e),
-                            letterSpacing: 0.5,
+                          const SizedBox(height: 28),
+                          const Text(
+                            r'$APP_NAME',
+                            style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1A1A2E),
+                              letterSpacing: 0.5,
+                            ),
                           ),
-                        ),
-                        const Spacer(flex: 3),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildDot(_dot1Anim, const Color(0xFF4A90E2)),
-                            const SizedBox(width: 8),
-                            _buildDot(_dot2Anim, const Color(0xFF4A90E2)),
-                            const SizedBox(width: 8),
-                            _buildDot(_dot3Anim, const Color(0xFF4A90E2)),
-                          ],
-                        ),
-                        const SizedBox(height: 48),
-                      ],
+                          const SizedBox(height: 34),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _buildDot(
+                                _dot1Anim,
+                                const Color(0xFF4A90E2),
+                              ),
+                              const SizedBox(width: 8),
+                              _buildDot(
+                                _dot2Anim,
+                                const Color(0xFF4A90E2),
+                              ),
+                              const SizedBox(width: 8),
+                              _buildDot(
+                                _dot3Anim,
+                                const Color(0xFF4A90E2),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -316,53 +438,89 @@ jobs:
 
           class WebViewPage extends StatefulWidget {
             const WebViewPage({super.key});
+
             @override
             State<WebViewPage> createState() => _WebViewPageState();
           }
 
-          class _WebViewPageState extends State<WebViewPage> {
+          class _WebViewPageState extends State<WebViewPage>
+              with WidgetsBindingObserver {
             late final WebViewController _controller;
             late final Connectivity _connectivity;
-            StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+            StreamSubscription<List<ConnectivityResult>>?
+                _connectivitySub;
+
             bool _dialogShown = false;
 
             @override
             void initState() {
               super.initState();
+
+              WidgetsBinding.instance.addObserver(this);
+
               _connectivity = Connectivity();
+
               _controller = WebViewController()
                 ..setJavaScriptMode(JavaScriptMode.unrestricted)
                 ..setBackgroundColor(Colors.white)
-                ..setNavigationDelegate(NavigationDelegate(
-                  onWebResourceError: (error) {
-                    if (error.isForMainFrame == true) _showNoConnectionDialog();
-                  },
-                ))
-                ..loadRequest(Uri.parse(r'$WEB_URL'));
+                ..setNavigationDelegate(
+                  NavigationDelegate(
+                    onWebResourceError: (error) {
+                      // Only show the dialog for errors affecting the
+                      // main document. Images/ads/analytics errors should
+                      // not interrupt the user.
+                      if (error.isForMainFrame == true) {
+                        _showNoConnectionDialog();
+                      }
+                    },
+                  ),
+                )
+                ..loadRequest(
+                  Uri.parse(r'$WEB_URL'),
+                );
 
-              _connectivitySub = _connectivity.onConnectivityChanged.listen((results) {
-                if (results.every((r) => r == ConnectivityResult.none)) {
+              _connectivitySub =
+                  _connectivity.onConnectivityChanged.listen((results) {
+                if (!mounted) return;
+
+                final hasNetwork = results.any(
+                  (result) => result != ConnectivityResult.none,
+                );
+
+                if (!hasNetwork) {
                   _showNoConnectionDialog();
                 }
               });
             }
 
             @override
-            void dispose() {
-              _connectivitySub?.cancel();
-              super.dispose();
+            void didChangeAppLifecycleState(AppLifecycleState state) {
+              // Keep the WebView alive when the app is backgrounded.
+              // Avoid unnecessary reloads when returning to the app.
+              if (state == AppLifecycleState.resumed) {
+                _dismissConnectionDialogIfNeeded();
+              }
+            }
+
+            void _dismissConnectionDialogIfNeeded() {
+              // Intentionally empty. The page should not reload just because
+              // the Android activity becomes active again.
             }
 
             void _showNoConnectionDialog() {
               if (!mounted || _dialogShown) return;
+
               setState(() {
                 _dialogShown = true;
               });
-              showDialog(
+
+              showDialog<void>(
                 context: context,
                 barrierDismissible: false,
-                builder: (context) => AlertDialog(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                builder: (dialogContext) => AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   title: const Row(
                     children: [
                       Icon(Icons.wifi_off, color: Colors.red),
@@ -371,16 +529,20 @@ jobs:
                     ],
                   ),
                   content: const Text(
-                    'Tidak ada koneksi internet. Periksa jaringan kamu dan coba lagi.',
+                    'Koneksi internet terputus. Periksa jaringan kamu dan coba lagi.',
                   ),
                   actions: [
                     TextButton(
-                      onPressed: () {
-                        Navigator.pop(context);
+                      onPressed: () async {
+                        Navigator.of(dialogContext).pop();
+
+                        if (!mounted) return;
+
                         setState(() {
                           _dialogShown = false;
                         });
-                        _controller.reload();
+
+                        await _controller.reload();
                       },
                       child: const Text('Coba Lagi'),
                     ),
@@ -390,20 +552,30 @@ jobs:
             }
 
             @override
+            void dispose() {
+              WidgetsBinding.instance.removeObserver(this);
+              _connectivitySub?.cancel();
+              super.dispose();
+            }
+
+            @override
             Widget build(BuildContext context) {
               return PopScope(
                 canPop: false,
-                onPopInvoked: (didPop) async {
+                onPopInvokedWithResult: (didPop, result) async {
                   if (didPop) return;
+
                   if (await _controller.canGoBack()) {
                     await _controller.goBack();
                   } else {
-                    SystemNavigator.pop();
+                    await SystemNavigator.pop();
                   }
                 },
                 child: Scaffold(
-                  body: SafeArea(
-                    child: WebViewWidget(controller: _controller),
+                  // No SafeArea here. Edge-to-edge lets WebView occupy
+                  // the complete available display area.
+                  body: WebViewWidget(
+                    controller: _controller,
                   ),
                 ),
               );
@@ -411,7 +583,7 @@ jobs:
           }
           DART
 
-          # Mengubah pembatas slash (/) menjadi pagar (#) agar link HTTP tidak merusak regex sed
+          # Replace shell placeholders safely after writing Dart.
           sed -i "s#r'\$APP_NAME'#'$APP_NAME'#g" myapp/lib/main.dart
           sed -i "s#r'\$WEB_URL'#'$WEB_URL'#g" myapp/lib/main.dart
 
@@ -423,6 +595,11 @@ jobs:
           sed -i '/<manifest xmlns:android/a\    <uses-permission android:name="android.permission.INTERNET"\/>' $MANIFEST
           sed -i '/<manifest xmlns:android/a\    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"\/>' $MANIFEST
           sed -i "s/android:label=\"[^\"]*\"/android:label=\"$APP_NAME\"/" $MANIFEST
+
+          # Make sure Android uses GPU rendering for the WebView.
+          if grep -q '<application ' "$MANIFEST"; then
+            sed -i 's/<application /<application android:hardwareAccelerated="true" /' "$MANIFEST"
+          fi
 
       - name: Setup Network Security (Allow HTTP)
         run: |
@@ -441,13 +618,24 @@ jobs:
           sed -i 's/<application/<application android:networkSecurityConfig="@xml\/network_security_config"/' \
             myapp/android/app/src/main/AndroidManifest.xml
 
+      - name: Optimize Android WebView Rendering
+        run: |
+          MANIFEST="myapp/android/app/src/main/AndroidManifest.xml"
+
+          # Ensure the main activity is allowed to draw edge-to-edge.
+          # The exact activity name is generated by Flutter as MainActivity.
+          sed -i 's/android:exported="true"/android:exported="true" android:screenOrientation="unspecified"/' "$MANIFEST"
+
+          # Android 12+ splash/theme compatibility is handled by Flutter.
+          # Keep hardware acceleration enabled at application level.
+
       - name: Download and Sanitize Icon
         run: |
           mkdir -p myapp/assets/icon
           sudo apt-get install -y imagemagick
 
           curl -L \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
             -H "Accept: application/octet-stream" \
             "${{ github.event.inputs.icon_url }}" \
             -o myapp/assets/icon/icon_raw
@@ -475,9 +663,18 @@ jobs:
           cd myapp
           dart run flutter_launcher_icons -f flutter_launcher_icons.yaml
 
+      - name: Optimize Release Build
+        run: |
+          cd myapp
+
+          # Keep release builds optimized and avoid unnecessary debug artifacts.
+          flutter config --no-analytics
+
       - name: Build APK
         run: |
           cd myapp
+          flutter clean
+          flutter pub get
           flutter build apk --release
 
       - name: Upload APK
