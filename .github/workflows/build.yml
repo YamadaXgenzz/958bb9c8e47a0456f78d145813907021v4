@@ -125,6 +125,57 @@ jobs:
           cache: true
 
       # ==========================================================
+      # 🛠️ FIX FLUTTER SDK PATH
+      # ==========================================================
+      # ZIP project bisa membawa android/local.properties dari Windows
+      # (contoh: flutter.sdk=D:\\flutter). GitHub Actions berjalan di
+      # Linux, sehingga path tersebut menyebabkan:
+      # URISyntaxException: Illegal character in opaque part
+      #
+      # Hanya nilai flutter.sdk yang dinormalisasi. Alur build, bot,
+      # dependency, dan konfigurasi project lainnya tidak diubah.
+      # ==========================================================
+      - name: Normalize Flutter SDK path
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          echo "=== Normalizing Flutter SDK path ==="
+          echo "Runner OS: $RUNNER_OS"
+          echo "Flutter SDK: $FLUTTER_ROOT"
+
+          LOCAL_PROPS="android/local.properties"
+
+          if [ -f "$LOCAL_PROPS" ]; then
+            echo "📄 Found $LOCAL_PROPS"
+
+            # Hapus flutter.sdk lama (termasuk path Windows seperti D:\\flutter)
+            # lalu tulis path Flutter SDK milik runner GitHub Actions.
+            grep -vE '^[[:space:]]*flutter\.sdk[[:space:]]*=' "$LOCAL_PROPS" > "$LOCAL_PROPS.tmp" || true
+            mv "$LOCAL_PROPS.tmp" "$LOCAL_PROPS"
+            printf 'flutter.sdk=%s\\n' "$FLUTTER_ROOT" >> "$LOCAL_PROPS"
+
+            echo "✅ flutter.sdk diperbarui ke Flutter SDK runner."
+          else
+            echo "ℹ️ android/local.properties tidak ditemukan, membuat file baru."
+
+            mkdir -p android
+            printf 'flutter.sdk=%s\\n' "$FLUTTER_ROOT" > "$LOCAL_PROPS"
+          fi
+
+          echo ""
+          echo "=== Sanitized android/local.properties ==="
+          sed -E 's#(sdk\.dir=).*#\\1<ANDROID_SDK_PATH>#; s#(flutter\.sdk=).*#\\1<FLUTTER_SDK_PATH>#' "$LOCAL_PROPS"
+
+          echo ""
+          echo "=== Checking for hard-coded Windows Flutter path ==="
+          if grep -RInE 'D:[/\\]+flutter|[A-Za-z]:[/\\]+flutter' android 2>/dev/null; then
+            echo "⚠️ Found a Windows Flutter path somewhere under android/."
+            echo "The standard local.properties path was already fixed above."
+          else
+            echo "✅ No hard-coded Windows Flutter path found under android/."
+          fi
+
+      # ==========================================================
       # 🔍 TAHAP ANALYZE — STEP 1: Jalankan & cetak hasil
       # (Dipisah dari exit 1 biar log tidak ter-truncate)
       # ==========================================================
