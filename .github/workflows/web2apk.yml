@@ -632,9 +632,17 @@ jobs:
       - name: Download and Sanitize Icon
         run: |
           mkdir -p myapp/assets/icon
-          sudo apt-get install -y imagemagick
 
-          curl -L \
+          # Install ImageMagick without optional/recommended packages.
+          # This avoids Ghostscript dependencies that can fail with a 404
+          # when the Ubuntu runner mirror is temporarily out of sync.
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends imagemagick
+
+          # Verify ImageMagick is available before processing the icon.
+          command -v convert
+
+          curl -fL \
             -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
             -H "Accept: application/octet-stream" \
             "${{ github.event.inputs.icon_url }}" \
@@ -647,6 +655,9 @@ jobs:
             -resize 1024x1024 \
             -extent 1024x1024 \
             myapp/assets/icon/icon.png
+
+          # Stop the workflow immediately if the sanitized icon was not created.
+          test -s myapp/assets/icon/icon.png
 
       - name: Write launcher icons config
         run: |
